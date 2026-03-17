@@ -33,6 +33,7 @@ class AgentState(TypedDict, total=False):
     session_id: str
     chat_history: List[Dict[str, str]]
     intent: str
+    llm_model: str
     rag_context: str
     rag_sources: List[str]
     appointment_data: Dict[str, Any]

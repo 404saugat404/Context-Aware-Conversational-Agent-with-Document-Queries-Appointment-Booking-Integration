@@ -8,9 +8,24 @@ for phone numbers, email, and date formats.
 from __future__ import annotations
 
 from datetime import date, datetime
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
+
+
+class GeminiModel(str, Enum):
+    """Supported Gemini model variants."""
+
+    GEMINI_2_5_FLASH = "gemini-2.5-flash"
+    GEMINI_2_5_PRO = "gemini-2.5-pro"
+    GEMINI_2_0_FLASH = "gemini-2.0-flash"
+    GEMINI_2_0_FLASH_LITE = "gemini-2.0-flash-lite"
+
+    @classmethod
+    def list_models(cls) -> list[str]:
+        """Return all supported model IDs."""
+        return [m.value for m in cls]
 
 
 class AppointmentRequest(BaseModel):
@@ -86,6 +101,14 @@ class ChatRequest(BaseModel):
         default=None,
         description="Session identifier for conversation continuity",
     )
+    model: Optional[GeminiModel] = Field(
+        default=None,
+        description=(
+            "Gemini model to use for this request. "
+            "Overrides the server default (GEMINI_MODEL_NAME env var). "
+            f"Options: {GeminiModel.list_models()}"
+        ),
+    )
 
 
 class ChatResponse(BaseModel):
@@ -100,4 +123,8 @@ class ChatResponse(BaseModel):
     sources: Optional[list[str]] = Field(
         default=None,
         description="Source documents used for RAG responses",
+    )
+    model_used: Optional[str] = Field(
+        default=None,
+        description="The Gemini model that generated the response",
     )

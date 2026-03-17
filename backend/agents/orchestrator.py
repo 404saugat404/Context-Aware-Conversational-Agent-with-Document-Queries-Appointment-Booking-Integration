@@ -18,6 +18,7 @@ from backend.agents.greeting_handler import handle_greeting
 from backend.agents.intent_classifier import classify_intent
 from backend.agents.rag_agent import handle_rag_query
 from backend.agents.state import AgentState
+from backend.config import GEMINI_MODEL_NAME
 from backend.logger import get_logger
 
 logger = get_logger(__name__)
@@ -90,16 +91,21 @@ def _build_graph() -> StateGraph:
 _compiled_graph = _build_graph().compile()
 
 
-def process_message(user_message: str, session_id: str | None = None) -> dict:
+def process_message(
+    user_message: str,
+    session_id: str | None = None,
+    llm_model: str | None = None,
+) -> dict:
     """
     Public entry point: process a user message through the agent graph.
 
     Args:
         user_message: The raw text from the user.
         session_id: Optional session identifier. A new one is created if absent.
+        llm_model: Optional Gemini model override for this request.
 
     Returns:
-        Dict with ``reply``, ``session_id``, ``intent``, and ``sources``.
+        Dict with ``reply``, ``session_id``, ``intent``, ``sources``, and ``model_used``.
     """
     if not session_id:
         session_id = uuid.uuid4().hex
@@ -109,11 +115,14 @@ def process_message(user_message: str, session_id: str | None = None) -> dict:
     chat_history = _sessions.setdefault(session_id, [])
     appt_state = _session_appointment_state.setdefault(session_id, {})
 
+    resolved_model = llm_model or GEMINI_MODEL_NAME
+
     initial_state: AgentState = {
         "user_message": user_message,
         "session_id": session_id,
         "chat_history": chat_history,
         "intent": "",
+        "llm_model": resolved_model,
         "rag_context": "",
         "rag_sources": [],
         "appointment_data": appt_state.get("data", {}),
@@ -149,6 +158,7 @@ def process_message(user_message: str, session_id: str | None = None) -> dict:
         "session_id": session_id,
         "intent": final_state.get("intent", "unknown"),
         "sources": final_state.get("rag_sources", []),
+        "model_used": resolved_model,
     }
 
     logger.info(

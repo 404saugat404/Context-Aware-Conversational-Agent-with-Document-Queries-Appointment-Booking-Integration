@@ -128,15 +128,15 @@ def search_similar(
         ]
         qdrant_filter = Filter(must=conditions)
 
-    results = client.search(
+    query_response = client.query_points(
         collection_name=collection_name,
-        query_vector=query_embedding,
+        query=query_embedding,
         limit=top_k,
         query_filter=qdrant_filter,
     )
 
     hits: list[dict[str, Any]] = []
-    for scored_point in results:
+    for scored_point in query_response.points:
         payload = scored_point.payload or {}
         hits.append(
             {

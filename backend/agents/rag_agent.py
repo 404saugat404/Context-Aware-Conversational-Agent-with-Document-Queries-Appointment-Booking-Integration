@@ -6,10 +6,10 @@ Retrieves relevant document context and generates an LLM-powered answer.
 
 from __future__ import annotations
 
-import google.generativeai as genai
+from google import genai
 
 from backend.agents.state import AgentState
-from backend.config import GEMINI_API_KEY
+from backend.config import GEMINI_API_KEY, GEMINI_MODEL_NAME
 from backend.logger import get_logger
 from backend.services.rag_service import answer_from_documents
 
@@ -26,15 +26,19 @@ Context:
 {context}
 """
 
+_gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
-def _call_gemini(prompt: str, system_instruction: str) -> str:
+
+def _call_gemini(prompt: str, system_instruction: str, model: str = GEMINI_MODEL_NAME) -> str:
     """Send a prompt to Gemini and return the response text."""
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel(
-        model_name="gemini-1.5-flash",
-        system_instruction=system_instruction,
+    logger.info("Calling Gemini model: %s", model)
+    response = _gemini_client.models.generate_content(
+        model=model,
+        contents=prompt,
+        config=genai.types.GenerateContentConfig(
+            system_instruction=system_instruction,
+        ),
     )
-    response = model.generate_content(prompt)
     return response.text
 
 
@@ -79,7 +83,8 @@ def handle_rag_query(state: AgentState) -> AgentState:
 
         full_prompt = f"{history_text}User question: {query}"
 
-        answer = _call_gemini(prompt=full_prompt, system_instruction=system_prompt)
+        selected_model = state.get("llm_model", GEMINI_MODEL_NAME)
+        answer = _call_gemini(prompt=full_prompt, system_instruction=system_prompt, model=selected_model)
 
         # If there's a paused appointment flow, remind the user
         paused_step = state.get("appointment_step", "")

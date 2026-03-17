@@ -1,0 +1,35 @@
+Company Overview
+
+TechCare Solutions is a healthcare technology company founded in 2020. We specialize in building digital health platforms that connect patients with healthcare providers. Our headquarters is located in Kathmandu, Nepal.
+
+Services We Offer
+
+We provide the following services:
+1. Telemedicine Consultations - Virtual appointments with licensed doctors via video call.
+2. Health Record Management - Secure digital storage and management of patient medical records.
+3. Appointment Scheduling - Online booking system for in-person and virtual visits.
+4. Prescription Management - Digital prescription creation, tracking, and pharmacy integration.
+5. Lab Report Integration - Automated lab result delivery and interpretation.
+
+Operating Hours
+
+Our office hours are Monday through Friday, 9:00 AM to 5:00 PM Nepal Standard Time (NST).
+Weekend consultations are available by appointment only.
+Emergency support is available 24/7 through our hotline: +977-1-4567890.
+
+Pricing Plans
+
+Basic Plan: Free - Includes up to 2 telemedicine consultations per month.
+Standard Plan: NPR 1,500/month - Includes unlimited consultations and health record management.
+Premium Plan: NPR 3,000/month - Includes all features plus priority scheduling and lab integration.
+
+Refund Policy
+
+Patients may request a full refund within 7 days of subscription purchase if no consultations have been used. After 7 days or if any consultation has been completed, a prorated refund will be issued for the remaining unused period. Refund requests should be sent to support@techcare.com.
+
+Contact Information
+
+Email: support@techcare.com
+Phone: +977-1-4567890
+Address: Durbar Marg, Kathmandu, Nepal
+Website: www.techcare.com

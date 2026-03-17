@@ -13,12 +13,14 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Query
 from pydantic import ValidationError
 
 from backend.agents.orchestrator import process_message
+from backend.config import GEMINI_MODEL_NAME
 from backend.logger import get_logger
 from backend.models.appointment_schema import (
     AppointmentRequest,
     AppointmentResponse,
     ChatRequest,
     ChatResponse,
+    GeminiModel,
 )
 from backend.services.appointment_service import book_appointment
 from backend.rag.ingest import ingest_file
@@ -49,6 +51,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         result = process_message(
             user_message=request.message,
             session_id=request.session_id,
+            llm_model=request.model.value if request.model else None,
         )
     except Exception as exc:
         logger.exception("Unhandled error in chat endpoint")
@@ -59,6 +62,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         session_id=result["session_id"],
         intent=result.get("intent"),
         sources=result.get("sources"),
+        model_used=result.get("model_used"),
     )
 
 
@@ -137,6 +141,15 @@ async def ingest_document_endpoint(
     return {
         "message": f"Successfully ingested '{file.filename}'",
         "chunks_ingested": chunks_ingested,
+    }
+
+
+@router.get("/models")
+async def list_models() -> dict:
+    """List available Gemini models and the current default."""
+    return {
+        "available_models": GeminiModel.list_models(),
+        "default_model": GEMINI_MODEL_NAME,
     }
 
 
