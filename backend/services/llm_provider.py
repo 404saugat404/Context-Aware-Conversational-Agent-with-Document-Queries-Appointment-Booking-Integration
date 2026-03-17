@@ -75,15 +75,20 @@ def detect_provider(model: str) -> LLMProvider:
 
 def list_available_models() -> dict:
     """
-    Return all known models grouped by provider.
+    Return actually available models grouped by provider.
 
-    Also queries Ollama for locally-pulled models if it's reachable.
+    Ollama models are only listed if Ollama is running and has models pulled.
     """
     ollama_local = _get_ollama_local_models()
+    ollama_status = "connected" if ollama_local else "not_running"
+
+    if not ollama_local:
+        logger.info("Ollama is not reachable or has no models pulled")
 
     return {
         "gemini": sorted(_GEMINI_MODELS),
-        "ollama": sorted(ollama_local) if ollama_local else sorted(_OLLAMA_KNOWN_MODELS),
+        "ollama": sorted(ollama_local),
+        "ollama_status": ollama_status,
         "default_model": GEMINI_MODEL_NAME,
     }
 

@@ -15,7 +15,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class LLMModel(str, Enum):
-    """Supported LLM model variants (Gemini + Ollama)."""
+    """Supported Gemini model variants. Ollama models are dynamic (detected at runtime)."""
 
     # Gemini (cloud)
     GEMINI_2_5_FLASH = "gemini-2.5-flash"
@@ -23,30 +23,10 @@ class LLMModel(str, Enum):
     GEMINI_2_0_FLASH = "gemini-2.0-flash"
     GEMINI_2_0_FLASH_LITE = "gemini-2.0-flash-lite"
 
-    # Ollama (local)
-    MISTRAL = "mistral"
-    LLAMA_3_2_1B = "llama3.2:1b"
-    LLAMA_3_2_3B = "llama3.2:3b"
-    LLAMA_3_1_8B = "llama3.1:8b"
-    GEMMA_2_2B = "gemma2:2b"
-    GEMMA_2_9B = "gemma2:9b"
-    PHI3_MINI = "phi3:mini"
-    QWEN_2_5_7B = "qwen2.5:7b"
-
     @classmethod
     def list_models(cls) -> list[str]:
-        """Return all supported model IDs."""
+        """Return all Gemini model IDs."""
         return [m.value for m in cls]
-
-    @classmethod
-    def gemini_models(cls) -> list[str]:
-        """Return Gemini model IDs only."""
-        return [m.value for m in cls if m.value.startswith("gemini")]
-
-    @classmethod
-    def ollama_models(cls) -> list[str]:
-        """Return Ollama model IDs only."""
-        return [m.value for m in cls if not m.value.startswith("gemini")]
 
 
 # Keep backward-compatible alias
@@ -129,8 +109,8 @@ class ChatRequest(BaseModel):
     model: Optional[str] = Field(
         default=None,
         description=(
-            "LLM model to use for this request (e.g. 'mistral', 'gemini-2.0-flash'). "
-            "Overrides the server default. Provider is auto-detected from model name."
+            "LLM model to use (e.g. 'mistral', 'gemini-2.0-flash'). "
+            "Leave empty to use the server default. Provider is auto-detected from model name."
         ),
     )
 

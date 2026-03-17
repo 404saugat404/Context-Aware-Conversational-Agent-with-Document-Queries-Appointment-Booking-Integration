@@ -20,6 +20,7 @@ from backend.agents.rag_agent import handle_rag_query
 from backend.agents.state import AgentState
 from backend.config import GEMINI_MODEL_NAME
 from backend.logger import get_logger
+from backend.services.guardrails_service import check_message
 from backend.services.persistence_service import (
     load_all_conversations,
     save_conversation,
@@ -140,6 +141,29 @@ def process_message(
         session_id,
         user_message,
     )
+
+    # --- Guardrails (skip when mid-appointment to avoid blocking field inputs) ---
+    active_appointment = appt_state.get("step", "") not in ("", "complete")
+    if not active_appointment:
+        guardrail_result = check_message(user_message)
+        if guardrail_result.is_blocked:
+            logger.info(
+                "Guardrail blocked message (reason=%s, session=%s): %.60s",
+                guardrail_result.reason,
+                session_id,
+                user_message,
+            )
+            # Still save to chat history so the user sees it in context
+            chat_history.append({"role": "user", "content": user_message})
+            chat_history.append({"role": "assistant", "content": guardrail_result.suggested_response})
+            save_conversation(session_id, chat_history)
+            return {
+                "reply": guardrail_result.suggested_response,
+                "session_id": session_id,
+                "intent": f"blocked:{guardrail_result.reason}",
+                "sources": [],
+                "model_used": resolved_model,
+            }
 
     final_state = _compiled_graph.invoke(initial_state)
 
