@@ -7,6 +7,8 @@ Each invocation advances one step and prompts for the next field.
 
 from __future__ import annotations
 
+import re
+
 from pydantic import ValidationError
 
 from backend.agents.state import AgentState
@@ -16,6 +18,44 @@ from backend.services.appointment_service import book_appointment, parse_and_val
 from backend.services.tools_service import validate_email, validate_phone_number
 
 logger = get_logger(__name__)
+
+# Conversational prefixes to strip from field inputs
+_NAME_PREFIX_PATTERN = re.compile(
+    r"^(?:my\s+name\s+is|i\s+am|i'm|it's|its|this\s+is|call\s+me)\s+",
+    re.IGNORECASE,
+)
+
+_PHONE_PREFIX_PATTERN = re.compile(
+    r"^(?:my\s+(?:phone\s+)?(?:number|phone|cell|mobile)\s+is|it's|its|phone\s*(?:number)?[:\s]+)\s*",
+    re.IGNORECASE,
+)
+
+_EMAIL_PREFIX_PATTERN = re.compile(
+    r"^(?:my\s+(?:email\s+)?(?:address|email|mail|id)\s+is|it's|its|email\s*(?:address)?[:\s]+)\s*",
+    re.IGNORECASE,
+)
+
+
+def _extract_name(raw_input: str) -> str:
+    """Strip conversational prefixes and title-case the name."""
+    cleaned = _NAME_PREFIX_PATTERN.sub("", raw_input.strip())
+    cleaned = cleaned.rstrip(".!,")
+    return cleaned.strip().title()
+
+
+def _extract_phone(raw_input: str) -> str:
+    """Strip conversational prefixes and non-digit characters (except leading +)."""
+    cleaned = _PHONE_PREFIX_PATTERN.sub("", raw_input.strip())
+    cleaned = cleaned.rstrip(".!,")
+    return cleaned.strip()
+
+
+def _extract_email(raw_input: str) -> str:
+    """Strip conversational prefixes from email input."""
+    cleaned = _EMAIL_PREFIX_PATTERN.sub("", raw_input.strip())
+    cleaned = cleaned.rstrip(".!,")
+    return cleaned.strip().lower()
+
 
 # The order in which we collect fields
 _BOOKING_STEPS = ["name", "phone", "email", "date", "confirm"]
@@ -71,12 +111,13 @@ def handle_appointment(state: AgentState) -> AgentState:
         if len(message) < 2 or not any(c.isalpha() for c in message):
             state["response"] = "That doesn't look like a valid name. Please enter your full name."
             return state
-        data["name"] = message.strip()
+        data["name"] = _extract_name(message)
         state["appointment_step"] = "phone"
         state["response"] = _STEP_PROMPTS["phone"].format(**data)
 
     elif step == "phone":
-        cleaned_phone = message.replace(" ", "").replace("-", "")
+        extracted_phone = _extract_phone(message)
+        cleaned_phone = extracted_phone.replace(" ", "").replace("-", "")
         if not validate_phone_number(cleaned_phone):
             state["response"] = (
                 "That phone number doesn't look right. "
@@ -88,10 +129,11 @@ def handle_appointment(state: AgentState) -> AgentState:
         state["response"] = _STEP_PROMPTS["email"]
 
     elif step == "email":
-        if not validate_email(message):
+        extracted_email = _extract_email(message)
+        if not validate_email(extracted_email):
             state["response"] = "That doesn't look like a valid email address. Please try again."
             return state
-        data["email"] = message.strip()
+        data["email"] = extracted_email
         state["appointment_step"] = "date"
         state["response"] = _STEP_PROMPTS["date"]
 
@@ -108,7 +150,12 @@ def handle_appointment(state: AgentState) -> AgentState:
         state["response"] = _STEP_PROMPTS["confirm"].format(**data)
 
     elif step == "confirm":
-        if message.lower() in ("yes", "y", "confirm", "sure", "ok"):
+        lowered = message.lower()
+        _CONFIRM_PATTERN = re.compile(r"\b(yes|y|confirm|sure|ok|okay|yep|yeah|absolutely|go\s+ahead|please)\b", re.IGNORECASE)
+        _DENY_PATTERN = re.compile(r"\b(no|nah|cancel|nope|don't|stop|nevermind|never\s*mind)\b", re.IGNORECASE)
+        is_confirm = bool(_CONFIRM_PATTERN.search(lowered))
+        is_deny = bool(_DENY_PATTERN.search(lowered))
+        if is_confirm and not is_deny:
             try:
                 appointment = AppointmentRequest(
                     name=data["name"],
@@ -136,7 +183,7 @@ def handle_appointment(state: AgentState) -> AgentState:
                 state["appointment_data"] = {}
                 logger.warning("Appointment validation failed: %s", error_messages)
 
-        elif message.lower() in ("no", "n", "cancel", "nope"):
+        elif is_deny:
             state["response"] = "No problem, the booking has been cancelled. Let me know if you need anything else!"
             state["appointment_step"] = "complete"
             state["appointment_data"] = {}

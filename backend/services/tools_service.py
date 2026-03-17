@@ -11,15 +11,45 @@ from datetime import date, datetime
 from typing import Optional
 
 import dateparser
+import parsedatetime
 
 from backend.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Shared parsedatetime calendar instance
+_pdt_calendar = parsedatetime.Calendar()
+
+
+def _parse_with_dateparser(text: str) -> Optional[date]:
+    """Attempt parsing with dateparser (handles absolute dates well)."""
+    parsed = dateparser.parse(
+        text,
+        settings={
+            "PREFER_DATES_FROM": "future",
+            "STRICT_PARSING": False,
+        },
+    )
+    if parsed is not None:
+        return parsed.date()
+    return None
+
+
+def _parse_with_parsedatetime(text: str) -> Optional[date]:
+    """Attempt parsing with parsedatetime (handles relative dates like 'next Monday')."""
+    time_struct, status = _pdt_calendar.parse(text)
+    if status == 0:
+        return None
+    return datetime(*time_struct[:6]).date()
+
 
 def parse_natural_language_date(text: str) -> Optional[date]:
     """
     Parse a human-friendly date string into a ``datetime.date``.
+
+    Uses dateparser first, then falls back to parsedatetime for relative
+    expressions like "next Monday" or "coming Tuesday" that dateparser
+    may not handle.
 
     Handles inputs like "next Monday", "March 5th", "tomorrow", "2025-04-01".
 
@@ -30,21 +60,20 @@ def parse_natural_language_date(text: str) -> Optional[date]:
         logger.debug("parse_natural_language_date received empty input")
         return None
 
-    parsed = dateparser.parse(
-        text,
-        settings={
-            "PREFER_DATES_FROM": "future",
-            "STRICT_PARSING": False,
-        },
-    )
+    # Try dateparser first (good for absolute dates and many relative ones)
+    result = _parse_with_dateparser(text)
+    if result is not None:
+        logger.debug("Parsed '%s' -> %s (via dateparser)", text, result.isoformat())
+        return result
 
-    if parsed is None:
-        logger.warning("Could not parse date from text: '%s'", text)
-        return None
+    # Fall back to parsedatetime (handles "next Monday", "coming Tuesday", etc.)
+    result = _parse_with_parsedatetime(text)
+    if result is not None:
+        logger.debug("Parsed '%s' -> %s (via parsedatetime)", text, result.isoformat())
+        return result
 
-    result = parsed.date()
-    logger.debug("Parsed '%s' -> %s", text, result.isoformat())
-    return result
+    logger.warning("Could not parse date from text: '%s'", text)
+    return None
 
 
 def validate_phone_number(phone: str) -> bool:

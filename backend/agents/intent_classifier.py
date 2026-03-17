@@ -76,7 +76,8 @@ def _is_plausible_field_input(text: str, step: str) -> bool:
         # Date inputs are usually short
         return len(text) < 80 and "?" not in text
     if step == "confirm":
-        return text.lower() in ("yes", "y", "no", "n", "confirm", "cancel", "sure", "ok", "nope")
+        confirm_deny_pattern = re.compile(r"\b(yes|y|no|nah|confirm|cancel|sure|ok|okay|nope|yep|yeah|absolutely|go\s+ahead|please|don't|stop|nevermind)\b", re.IGNORECASE)
+        return bool(confirm_deny_pattern.search(text))
     return True
 
 

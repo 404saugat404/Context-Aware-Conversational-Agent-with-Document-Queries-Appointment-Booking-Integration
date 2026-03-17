@@ -20,6 +20,10 @@ from backend.agents.rag_agent import handle_rag_query
 from backend.agents.state import AgentState
 from backend.config import GEMINI_MODEL_NAME
 from backend.logger import get_logger
+from backend.services.persistence_service import (
+    load_all_conversations,
+    save_conversation,
+)
 
 logger = get_logger(__name__)
 
@@ -36,9 +40,9 @@ def _handle_appointment_cancel(state: AgentState) -> AgentState:
     return state
 
 # ---------------------------------------------------------------------------
-# In-memory session store (swap for Redis in production)
+# Session stores — loaded from disk on startup, flushed after each message
 # ---------------------------------------------------------------------------
-_sessions: Dict[str, List[Dict[str, str]]] = {}
+_sessions: Dict[str, List[Dict[str, str]]] = load_all_conversations()
 _session_appointment_state: Dict[str, dict] = {}
 
 
@@ -146,6 +150,10 @@ def process_message(
     # Keep history bounded (last 20 messages)
     if len(chat_history) > 20:
         _sessions[session_id] = chat_history[-20:]
+        chat_history = _sessions[session_id]
+
+    # Flush conversation to disk
+    save_conversation(session_id, chat_history)
 
     # Persist appointment flow state
     _session_appointment_state[session_id] = {

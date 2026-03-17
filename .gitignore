@@ -32,3 +32,4 @@ data/*.pkl
 
 # Docker volumes
 docker/qdrant_data/
+*.json

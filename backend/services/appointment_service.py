@@ -17,12 +17,23 @@ from backend.models.appointment_schema import (
     AppointmentResponse,
     AppointmentSlot,
 )
+from backend.services.persistence_service import (
+    load_all_appointments,
+    save_appointment,
+)
 from backend.services.tools_service import parse_natural_language_date
 
 logger = get_logger(__name__)
 
-# In-memory appointment store (replace with database in production)
+# Appointment store — loaded from disk on startup, flushed on each booking
 _appointment_store: Dict[str, AppointmentRequest] = {}
+
+# Rehydrate from disk (appointments are stored as dicts, convert back to models)
+for _appt_id, _appt_data in load_all_appointments().items():
+    try:
+        _appointment_store[_appt_id] = AppointmentRequest(**_appt_data)
+    except Exception as _exc:
+        logger.warning("Skipping corrupt appointment %s: %s", _appt_id, _exc)
 
 
 def book_appointment(appointment_data: AppointmentRequest) -> AppointmentResponse:
@@ -46,6 +57,9 @@ def book_appointment(appointment_data: AppointmentRequest) -> AppointmentRespons
 
     appointment_id = uuid.uuid4().hex[:12]
     _appointment_store[appointment_id] = appointment_data
+
+    # Flush to disk
+    save_appointment(appointment_id, appointment_data.model_dump(mode="json"))
 
     logger.info("Appointment booked successfully: id=%s", appointment_id)
     return AppointmentResponse(

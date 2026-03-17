@@ -38,6 +38,11 @@ RAG_RERANK_TOP_N: int = int(os.getenv("RAG_RERANK_TOP_N", "3"))
 RAG_MAX_CONTEXT_TOKENS: int = int(os.getenv("RAG_MAX_CONTEXT_TOKENS", "2048"))
 
 # ---------------------------------------------------------------------------
+# Persistence
+# ---------------------------------------------------------------------------
+DATA_DIR: str = os.getenv("DATA_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "data"))
+
+# ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
