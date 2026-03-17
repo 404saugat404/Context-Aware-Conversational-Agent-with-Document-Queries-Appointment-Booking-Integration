@@ -14,18 +14,43 @@ from typing import Optional
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
-class GeminiModel(str, Enum):
-    """Supported Gemini model variants."""
+class LLMModel(str, Enum):
+    """Supported LLM model variants (Gemini + Ollama)."""
 
+    # Gemini (cloud)
     GEMINI_2_5_FLASH = "gemini-2.5-flash"
     GEMINI_2_5_PRO = "gemini-2.5-pro"
     GEMINI_2_0_FLASH = "gemini-2.0-flash"
     GEMINI_2_0_FLASH_LITE = "gemini-2.0-flash-lite"
 
+    # Ollama (local)
+    MISTRAL = "mistral"
+    LLAMA_3_2_1B = "llama3.2:1b"
+    LLAMA_3_2_3B = "llama3.2:3b"
+    LLAMA_3_1_8B = "llama3.1:8b"
+    GEMMA_2_2B = "gemma2:2b"
+    GEMMA_2_9B = "gemma2:9b"
+    PHI3_MINI = "phi3:mini"
+    QWEN_2_5_7B = "qwen2.5:7b"
+
     @classmethod
     def list_models(cls) -> list[str]:
         """Return all supported model IDs."""
         return [m.value for m in cls]
+
+    @classmethod
+    def gemini_models(cls) -> list[str]:
+        """Return Gemini model IDs only."""
+        return [m.value for m in cls if m.value.startswith("gemini")]
+
+    @classmethod
+    def ollama_models(cls) -> list[str]:
+        """Return Ollama model IDs only."""
+        return [m.value for m in cls if not m.value.startswith("gemini")]
+
+
+# Keep backward-compatible alias
+GeminiModel = LLMModel
 
 
 class AppointmentRequest(BaseModel):
@@ -101,12 +126,11 @@ class ChatRequest(BaseModel):
         default=None,
         description="Session identifier for conversation continuity",
     )
-    model: Optional[GeminiModel] = Field(
+    model: Optional[str] = Field(
         default=None,
         description=(
-            "Gemini model to use for this request. "
-            "Overrides the server default (GEMINI_MODEL_NAME env var). "
-            f"Options: {GeminiModel.list_models()}"
+            "LLM model to use for this request (e.g. 'mistral', 'gemini-2.0-flash'). "
+            "Overrides the server default. Provider is auto-detected from model name."
         ),
     )
 

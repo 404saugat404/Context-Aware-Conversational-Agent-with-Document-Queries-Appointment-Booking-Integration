@@ -14,6 +14,7 @@ sentence-transformers>=3.0.0
 
 # LLM providers
 google-genai>=1.0.0
+httpx>=0.27.0
 
 # Validation & schemas
 pydantic[email]>=2.7.0

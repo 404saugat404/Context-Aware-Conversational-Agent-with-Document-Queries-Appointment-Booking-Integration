@@ -2,15 +2,16 @@
 RAG agent node for LangGraph.
 
 Retrieves relevant document context and generates an LLM-powered answer.
+Supports both Gemini (cloud) and Ollama (local) backends via the
+unified LLM provider service.
 """
 
 from __future__ import annotations
 
-from google import genai
-
 from backend.agents.state import AgentState
-from backend.config import GEMINI_API_KEY, GEMINI_MODEL_NAME
+from backend.config import GEMINI_MODEL_NAME
 from backend.logger import get_logger
+from backend.services.llm_provider import generate_response
 from backend.services.rag_service import answer_from_documents
 
 logger = get_logger(__name__)
@@ -26,21 +27,6 @@ Context:
 {context}
 """
 
-_gemini_client = genai.Client(api_key=GEMINI_API_KEY)
-
-
-def _call_gemini(prompt: str, system_instruction: str, model: str = GEMINI_MODEL_NAME) -> str:
-    """Send a prompt to Gemini and return the response text."""
-    logger.info("Calling Gemini model: %s", model)
-    response = _gemini_client.models.generate_content(
-        model=model,
-        contents=prompt,
-        config=genai.types.GenerateContentConfig(
-            system_instruction=system_instruction,
-        ),
-    )
-    return response.text
-
 
 def handle_rag_query(state: AgentState) -> AgentState:
     """
@@ -49,7 +35,7 @@ def handle_rag_query(state: AgentState) -> AgentState:
     Steps:
         1. Run the RAG service to get context.
         2. Build an LLM prompt with the context.
-        3. Call the LLM to generate an answer.
+        3. Call the LLM (Gemini or Ollama) to generate an answer.
         4. Write the answer into ``state["response"]``.
     """
     query = state.get("user_message", "")
@@ -84,7 +70,11 @@ def handle_rag_query(state: AgentState) -> AgentState:
         full_prompt = f"{history_text}User question: {query}"
 
         selected_model = state.get("llm_model", GEMINI_MODEL_NAME)
-        answer = _call_gemini(prompt=full_prompt, system_instruction=system_prompt, model=selected_model)
+        answer = generate_response(
+            prompt=full_prompt,
+            system_instruction=system_prompt,
+            model=selected_model,
+        )
 
         # If there's a paused appointment flow, remind the user
         paused_step = state.get("appointment_step", "")
@@ -103,8 +93,8 @@ def handle_rag_query(state: AgentState) -> AgentState:
         logger.exception("RAG agent failed")
         state["error"] = str(exc)
         state["response"] = (
-            "I'm sorry, I encountered an error while searching the documents. "
-            "Please try again."
+            f"I'm sorry, I encountered an error: {exc}. "
+            "Please check that the LLM service is running and try again."
         )
 
     return state

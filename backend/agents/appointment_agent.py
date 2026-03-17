@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 
 # Conversational prefixes to strip from field inputs
 _NAME_PREFIX_PATTERN = re.compile(
-    r"^(?:my\s+name\s+is|i\s+am|i'm|it's|its|this\s+is|call\s+me)\s+",
+    r"^(?:(?:hi|hello|hey|greetings)[,.\s!]*)?(?:my\s+name\s+is|i\s+am|i'm|it's|its|this\s+is|call\s+me)\s+",
     re.IGNORECASE,
 )
 
@@ -36,11 +36,28 @@ _EMAIL_PREFIX_PATTERN = re.compile(
 )
 
 
+# Pattern to find name phrases anywhere in a longer message (no ^ anchor)
+_INLINE_NAME_PATTERN = re.compile(
+    r"(?:my\s+name\s+is|i\s+am|i'm|call\s+me)\s+(.+?)(?:\s*[,.]?\s*$)",
+    re.IGNORECASE,
+)
+
+
 def _extract_name(raw_input: str) -> str:
     """Strip conversational prefixes and title-case the name."""
     cleaned = _NAME_PREFIX_PATTERN.sub("", raw_input.strip())
     cleaned = cleaned.rstrip(".!,")
     return cleaned.strip().title()
+
+
+def _extract_inline_name(message: str) -> str | None:
+    """Try to extract a name from a longer message like 'book appointment, my name is Saugat'."""
+    match = _INLINE_NAME_PATTERN.search(message)
+    if match:
+        name = match.group(1).strip().rstrip(".!,")
+        if len(name) >= 2 and any(c.isalpha() for c in name):
+            return name.title()
+    return None
 
 
 def _extract_phone(raw_input: str) -> str:
@@ -99,10 +116,22 @@ def handle_appointment(state: AgentState) -> AgentState:
 
     # First contact — start the flow
     if not step:
-        state["appointment_step"] = "name"
         state["appointment_data"] = {}
-        state["response"] = _STEP_PROMPTS["name"]
+        data = state["appointment_data"]
         logger.info("Appointment flow started")
+
+        # Check if the user provided their name in the same message
+        # e.g. "book an appointment, my name is Saugat"
+        inline_name = _extract_inline_name(message)
+        if inline_name:
+            data["name"] = inline_name
+            state["appointment_step"] = "phone"
+            state["response"] = _STEP_PROMPTS["phone"].format(**data)
+            logger.info("Extracted inline name: %s", inline_name)
+            return state
+
+        state["appointment_step"] = "name"
+        state["response"] = _STEP_PROMPTS["name"]
         return state
 
     # --- Collect & validate each field ---------------------------------
