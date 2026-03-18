@@ -173,6 +173,203 @@ def _call_ollama(prompt: str, system_instruction: str, model: str) -> str:
 # Public API
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# LLM-based field extraction prompts
+# ---------------------------------------------------------------------------
+
+_EXTRACT_FIELD_PROMPTS = {
+    "name": (
+        'Extract ONLY the person\'s name from this message. '
+        'Return just the name, nothing else. If no name is found, return "NONE".\n\n'
+        'Message: "{message}"\n\nName:'
+    ),
+    "phone": (
+        'Extract ONLY the phone number from this message. '
+        'Return just the digits (with optional leading +), nothing else. '
+        'If no phone number is found, return "NONE".\n\n'
+        'Message: "{message}"\n\nPhone:'
+    ),
+    "email": (
+        'Extract ONLY the email address from this message. '
+        'Return just the email, nothing else. If no email is found, return "NONE".\n\n'
+        'Message: "{message}"\n\nEmail:'
+    ),
+}
+
+_EXTRACT_ALL_FIELDS_PROMPT = """Extract appointment details from this user message.
+Return ONLY a JSON object with the fields you can find. Use null for fields not present.
+
+Fields to extract:
+- name: The person's full name (string or null)
+- phone: Phone number as digits only, with optional leading + (string or null)
+- email: Email address (string or null)
+- date: The preferred date in natural language exactly as stated (string or null)
+
+Rules:
+- Return ONLY valid JSON, no explanation or markdown
+- Only extract fields that are clearly present in the message
+- Do not guess or infer missing fields
+- For date, preserve the user's wording (e.g. "next Monday", "March 25th")
+
+Message: "{message}"
+
+JSON:"""
+
+
+def extract_field_with_llm(
+    message: str, field_type: str, model: Optional[str] = None
+) -> Optional[str]:
+    """
+    Use the LLM to extract a specific field value from natural language input.
+
+    Args:
+        message: The raw user message.
+        field_type: One of "name", "phone", "email".
+        model: LLM model to use (auto-detected if None).
+
+    Returns:
+        The extracted value, or None if extraction failed.
+    """
+    prompt_template = _EXTRACT_FIELD_PROMPTS.get(field_type)
+    if not prompt_template:
+        logger.warning("No extraction prompt for field type: %s", field_type)
+        return None
+
+    resolved_model = model or GEMINI_MODEL_NAME
+    prompt = prompt_template.format(message=message)
+    system_instruction = (
+        "You are a data extraction assistant. "
+        "Return ONLY the requested value, no explanation or extra text."
+    )
+
+    try:
+        raw = generate_response(
+            prompt=prompt,
+            system_instruction=system_instruction,
+            model=resolved_model,
+        ).strip()
+
+        cleaned = raw.strip("\"'`.").strip()
+
+        if not cleaned or cleaned.upper() == "NONE":
+            logger.info("LLM could not extract %s from: %.60s", field_type, message)
+            return None
+
+        logger.info("LLM extracted %s='%s' from: %.60s", field_type, cleaned, message)
+        return cleaned
+    except Exception as exc:
+        logger.error("LLM field extraction failed for %s: %s", field_type, exc)
+        return None
+
+
+def extract_all_fields_with_llm(
+    message: str, model: Optional[str] = None
+) -> dict[str, Optional[str]]:
+    """
+    Extract all appointment fields from a single message using the LLM.
+
+    Returns a dict with keys: name, phone, email, date.
+    Values are the extracted strings or None if not found.
+    """
+    import json
+
+    resolved_model = model or GEMINI_MODEL_NAME
+    prompt = _EXTRACT_ALL_FIELDS_PROMPT.format(message=message)
+    system_instruction = (
+        "You are a data extraction assistant. "
+        "Return ONLY valid JSON, no explanation or extra text."
+    )
+
+    empty_result: dict[str, Optional[str]] = {
+        "name": None, "phone": None, "email": None, "date": None,
+    }
+
+    try:
+        raw = generate_response(
+            prompt=prompt,
+            system_instruction=system_instruction,
+            model=resolved_model,
+        ).strip()
+
+        # Strip markdown code fences if present
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+            if raw.endswith("```"):
+                raw = raw[:-3]
+            raw = raw.strip()
+
+        parsed = json.loads(raw)
+
+        result: dict[str, Optional[str]] = {}
+        for key in ("name", "phone", "email", "date"):
+            value = parsed.get(key)
+            if value and str(value).strip().upper() != "NONE":
+                result[key] = str(value).strip()
+            else:
+                result[key] = None
+
+        logger.info(
+            "LLM multi-field extraction: %s from: %.80s",
+            {k: v for k, v in result.items() if v},
+            message,
+        )
+        return result
+
+    except json.JSONDecodeError as exc:
+        logger.warning("LLM returned invalid JSON for multi-field extraction: %s", exc)
+        return empty_result
+    except Exception as exc:
+        logger.error("LLM multi-field extraction failed: %s", exc)
+        return empty_result
+
+
+_INTENT_CLASSIFICATION_PROMPT = """Classify the following user message into exactly ONE of these categories:
+- rag: The user is asking a question, seeking information, or wants to know something.
+- appointment: The user wants to book, schedule, or set up an appointment/meeting/consultation.
+- greeting: The user is greeting (hi, hello, hey, good morning, etc.) or making small talk.
+- appointment_cancel: The user wants to cancel or stop an ongoing appointment booking.
+
+Rules:
+- Return ONLY the category label (rag, appointment, greeting, or appointment_cancel).
+- Do NOT add any explanation, punctuation, or extra text.
+- If unsure, return "rag".
+
+User message: "{message}"
+
+Category:"""
+
+
+def classify_intent_with_llm(message: str, model: Optional[str] = None) -> Optional[str]:
+    """
+    Use the LLM to classify intent when regex is uncertain.
+
+    Returns one of: rag, appointment, greeting, appointment_cancel, or None on failure.
+    """
+    resolved_model = model or GEMINI_MODEL_NAME
+    prompt = _INTENT_CLASSIFICATION_PROMPT.format(message=message)
+    system_instruction = "You are an intent classifier. Return only a single label, nothing else."
+
+    try:
+        raw = generate_response(
+            prompt=prompt,
+            system_instruction=system_instruction,
+            model=resolved_model,
+        ).strip().lower()
+
+        # Extract just the label — LLMs sometimes add quotes or extra whitespace
+        valid_intents = {"rag", "appointment", "greeting", "appointment_cancel"}
+        for intent in valid_intents:
+            if intent in raw:
+                logger.info("LLM classified intent as '%s' (raw: '%s')", intent, raw)
+                return intent
+
+        logger.warning("LLM returned unrecognized intent: '%s', defaulting to None", raw)
+        return None
+    except Exception as exc:
+        logger.error("LLM intent classification failed: %s", exc)
+        return None
+
+
 def generate_response(
     prompt: str,
     system_instruction: str,

@@ -44,8 +44,8 @@ class AppointmentRequest(BaseModel):
     )
     phone: str = Field(
         ...,
-        pattern=r"^\+?\d{10,15}$",
-        description="Phone number (10-15 digits, optional leading +)",
+        pattern=r"^(?:\+977)?(98|97)\d{8}$",
+        description="Nepali phone number (starts with 98 or 97, 10 digits, optional +977 country code)",
     )
     email: EmailStr = Field(
         ...,
@@ -124,11 +124,19 @@ class ChatResponse(BaseModel):
         default=None,
         description="Detected intent (rag, appointment, greeting, etc.)",
     )
+    intent_confidence: Optional[str] = Field(
+        default=None,
+        description="Classification confidence level (high, medium, low)",
+    )
+    intent_source: Optional[str] = Field(
+        default=None,
+        description="Which classifier determined the intent (regex, llm, context, fallback)",
+    )
     sources: Optional[list[str]] = Field(
         default=None,
         description="Source documents used for RAG responses",
     )
     model_used: Optional[str] = Field(
         default=None,
-        description="The Gemini model that generated the response",
+        description="The LLM model that generated the response",
     )

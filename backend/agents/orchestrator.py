@@ -47,6 +47,27 @@ _sessions: Dict[str, List[Dict[str, str]]] = load_all_conversations()
 _session_appointment_state: Dict[str, dict] = {}
 
 
+def clear_session(session_id: str) -> bool:
+    """
+    Clear all state for a session (chat history + appointment state).
+
+    Returns True if the session existed, False if not found.
+    """
+    found = session_id in _sessions or session_id in _session_appointment_state
+    _sessions.pop(session_id, None)
+    _session_appointment_state.pop(session_id, None)
+
+    # Remove persisted conversation file
+    from backend.services.persistence_service import delete_conversation
+    delete_conversation(session_id)
+
+    if found:
+        logger.info("Session cleared: %s", session_id)
+    else:
+        logger.info("Session not found for clearing: %s", session_id)
+    return found
+
+
 def _route_by_intent(state: AgentState) -> str:
     """Conditional edge: return the node name matching the classified intent."""
     intent = state.get("intent", "unknown")
@@ -127,6 +148,8 @@ def process_message(
         "session_id": session_id,
         "chat_history": chat_history,
         "intent": "",
+        "intent_confidence": "",
+        "intent_source": "",
         "llm_model": resolved_model,
         "rag_context": "",
         "rag_sources": [],
@@ -161,6 +184,8 @@ def process_message(
                 "reply": guardrail_result.suggested_response,
                 "session_id": session_id,
                 "intent": f"blocked:{guardrail_result.reason}",
+                "intent_confidence": "high",
+                "intent_source": "guardrail",
                 "sources": [],
                 "model_used": resolved_model,
             }
@@ -189,6 +214,8 @@ def process_message(
         "reply": final_state.get("response", "I'm not sure how to help with that."),
         "session_id": session_id,
         "intent": final_state.get("intent", "unknown"),
+        "intent_confidence": final_state.get("intent_confidence", ""),
+        "intent_source": final_state.get("intent_source", ""),
         "sources": final_state.get("rag_sources", []),
         "model_used": resolved_model,
     }
