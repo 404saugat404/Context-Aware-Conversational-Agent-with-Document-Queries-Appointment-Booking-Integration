@@ -192,9 +192,13 @@ def process_message(
 
     final_state = _compiled_graph.invoke(initial_state)
 
-    # Persist conversational context
+    # Persist conversational context (include intent for follow-up detection)
     chat_history.append({"role": "user", "content": user_message})
-    chat_history.append({"role": "assistant", "content": final_state.get("response", "")})
+    chat_history.append({
+        "role": "assistant",
+        "content": final_state.get("response", ""),
+        "intent": final_state.get("intent", ""),
+    })
 
     # Keep history bounded (last 20 messages)
     if len(chat_history) > 20:

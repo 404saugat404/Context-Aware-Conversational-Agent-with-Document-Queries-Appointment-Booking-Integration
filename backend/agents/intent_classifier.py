@@ -46,6 +46,8 @@ _RAG_PATTERNS = [
     r"\b(what|how|why|when|where|who|explain|describe|tell me|can you)\b",
     r"\b(know\s+more|learn\s+more|more\s+about|details?\s+about|information\s+(about|on))\b",
     r"\?$",
+    # Question structures: "how did", "what was", "why is", "who was", etc.
+    r"^(what|how|why|when|where|who)\s+(did|does|do|is|are|was|were|can|could|would|will|has|have|had)\b",
 ]
 
 _EXIT_APPOINTMENT_PATTERNS = [
@@ -221,6 +223,27 @@ def classify_intent(state: AgentState) -> AgentState:
             regex_intent, message,
         )
         return state
+
+    # --- Pass 1.5: Conversation context — follow-up detection -------------
+    # If regex is uncertain and the last exchange was RAG, short follow-ups
+    # without appointment keywords are likely RAG continuations.
+    chat_history = state.get("chat_history", [])
+    if chat_history and regex_confidence == "low" and not _matches_any(message, _APPOINTMENT_PATTERNS):
+        # Check if the last assistant response came from a RAG query
+        last_intent = None
+        for entry in reversed(chat_history):
+            if entry.get("intent"):
+                last_intent = entry["intent"]
+                break
+        if last_intent == "rag":
+            state["intent"] = "rag"
+            state["intent_confidence"] = "high"
+            state["intent_source"] = "context"
+            logger.info(
+                "Follow-up to previous RAG query, keeping intent as 'rag' for: %.60s",
+                message,
+            )
+            return state
 
     # --- Pass 2: LLM fallback (regex uncertain or no match) ---------------
     logger.info(

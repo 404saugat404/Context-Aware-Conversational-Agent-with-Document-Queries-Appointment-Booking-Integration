@@ -77,8 +77,8 @@ def parse_natural_language_date(text: str) -> Optional[date]:
 
 
 def validate_phone_number(phone: str) -> bool:
-    """Return True if *phone* matches a 10-15 digit pattern (optional leading +)."""
-    pattern = r"^\+?\d{10,15}$"
+    """Return True if *phone* is a valid Nepali mobile number (starts with 98 or 97, 10 digits, optional +977)."""
+    pattern = r"^(?:\+977)?(98|97)\d{8}$"
     is_valid = bool(re.match(pattern, phone.strip()))
     if not is_valid:
         logger.debug("Invalid phone number: '%s'", phone)

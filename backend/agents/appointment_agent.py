@@ -183,10 +183,21 @@ def _extract_fields_regex(message: str) -> dict[str, Optional[str]]:
         if name_direct:
             result["name"] = name_direct
 
-    # Date: try parsing
-    parsed_date = _extract_date_regex(message)
-    if parsed_date:
-        result["preferred_date"] = parsed_date.isoformat()
+    # Date: only try parsing if the message contains date-like keywords
+    # to avoid dateparser aggressively interpreting names/random text as dates
+    _DATE_HINT_PATTERN = re.compile(
+        r"\b(january|february|march|april|may|june|july|august|september|october|november|december"
+        r"|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec"
+        r"|monday|tuesday|wednesday|thursday|friday|saturday|sunday"
+        r"|tomorrow|today|next\s+\w+|coming\s+\w+"
+        r"|\d{1,2}[/-]\d{1,2}|\d{4}[/-]\d{1,2}[/-]\d{1,2}"
+        r"|\d{1,2}(?:st|nd|rd|th))\b",
+        re.IGNORECASE,
+    )
+    if _DATE_HINT_PATTERN.search(message):
+        parsed_date = _extract_date_regex(message)
+        if parsed_date:
+            result["preferred_date"] = parsed_date.isoformat()
 
     return result
 
@@ -339,7 +350,7 @@ def _prompt_for_field(field: str, data: dict) -> str:
     """Return the user-facing prompt for a specific missing field."""
     prompts = {
         "name": "What is your full name?",
-        "phone": f"Thanks, {data.get('name', '')}! What is your phone number? (10-15 digits)",
+        "phone": f"Thanks, {data.get('name', '')}! What is your phone number? (10 digits, starting with 98 or 97)",
         "email": "Got it. What is your email address?",
         "preferred_date": "When would you like to schedule the appointment? (e.g. 'next Monday', 'March 25th')",
     }
@@ -489,7 +500,7 @@ def handle_appointment(state: AgentState) -> AgentState:
     if not data.get(step):
         error_messages = {
             "name": "That doesn't look like a valid name. Please enter your full name.",
-            "phone": "That phone number doesn't look right. Please enter a valid phone number (10-15 digits).",
+            "phone": "That phone number doesn't look right. Please enter a valid Nepali phone number (10 digits, starting with 98 or 97).",
             "email": "That doesn't look like a valid email address. Please try again.",
             "preferred_date": (
                 "I couldn't understand that date, or it's in the past. "

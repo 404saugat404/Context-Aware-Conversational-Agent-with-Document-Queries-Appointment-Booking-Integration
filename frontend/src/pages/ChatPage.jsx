@@ -1,6 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { sendChat, getModels, deleteSession } from '../api/client'
 import './ChatPage.css'
+
+// Character-by-character typewriter speed (ms per character)
+const TYPE_SPEED = 18
 
 function ChatPage() {
   const [messages, setMessages] = useState([])
@@ -10,7 +13,11 @@ function ChatPage() {
   const [models, setModels] = useState([])
   const [selectedModel, setSelectedModel] = useState('')
   const [ollamaStatus, setOllamaStatus] = useState('')
+  // Tracks the index of the message currently being typed out
+  const [typingIndex, setTypingIndex] = useState(null)
+  const [displayedText, setDisplayedText] = useState('')
   const bottomRef = useRef(null)
+  const typingRef = useRef(null) // hold interval id so we can cancel
 
   useEffect(() => {
     getModels()
@@ -28,7 +35,32 @@ function ChatPage() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, displayedText])
+
+  // Start the typewriter effect when typingIndex changes
+  useEffect(() => {
+    if (typingIndex === null) return
+    const fullText = messages[typingIndex]?.content || ''
+    if (!fullText) return
+
+    let charPos = 0
+    setDisplayedText('')
+
+    typingRef.current = setInterval(() => {
+      charPos += 1
+      setDisplayedText(fullText.slice(0, charPos))
+
+      if (charPos >= fullText.length) {
+        clearInterval(typingRef.current)
+        typingRef.current = null
+        setTypingIndex(null)
+      }
+    }, TYPE_SPEED)
+
+    return () => {
+      if (typingRef.current) clearInterval(typingRef.current)
+    }
+  }, [typingIndex]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSend = async () => {
     const text = input.trim()
@@ -41,16 +73,19 @@ function ChatPage() {
     try {
       const data = await sendChat(text, sessionId, selectedModel)
       setSessionId(data.session_id)
-      setMessages((prev) => [
-        ...prev,
-        {
+      setMessages((prev) => {
+        const newMsg = {
           role: 'assistant',
           content: data.reply,
           intent: data.intent,
           sources: data.sources,
           model_used: data.model_used,
-        },
-      ])
+        }
+        const newMessages = [...prev, newMsg]
+        // Kick off typewriter for this new message
+        setTypingIndex(newMessages.length - 1)
+        return newMessages
+      })
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -123,24 +158,30 @@ function ChatPage() {
             <p>Ask questions about documents, book appointments, or just say hello.</p>
           </div>
         )}
-        {messages.map((msg, i) => (
-          <div key={i} className={`message ${msg.role}`}>
-            <div className={`bubble ${msg.role} ${msg.isError ? 'error' : ''}`}>
-              <p>{msg.content}</p>
-              {msg.role === 'assistant' && !msg.isError && (
-                <div className="message-meta">
-                  {msg.intent && <span className="meta-tag intent">{msg.intent}</span>}
-                  {msg.model_used && <span className="meta-tag model">{msg.model_used}</span>}
-                  {msg.sources && msg.sources.length > 0 && (
-                    <span className="meta-tag sources">
-                      Sources: {msg.sources.join(', ')}
-                    </span>
-                  )}
-                </div>
-              )}
+        {messages.map((msg, i) => {
+          const isTyping = typingIndex === i
+          const text = isTyping ? displayedText : msg.content
+          const showMeta = msg.role === 'assistant' && !msg.isError && !isTyping
+
+          return (
+            <div key={i} className={`message ${msg.role} fade-in`}>
+              <div className={`bubble ${msg.role} ${msg.isError ? 'error' : ''}`}>
+                <p>{text}{isTyping && <span className="cursor">|</span>}</p>
+                {showMeta && (
+                  <div className="message-meta">
+                    {msg.intent && <span className="meta-tag intent">{msg.intent}</span>}
+                    {msg.model_used && <span className="meta-tag model">{msg.model_used}</span>}
+                    {msg.sources && msg.sources.length > 0 && (
+                      <span className="meta-tag sources">
+                        Sources: {msg.sources.join(', ')}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
         {loading && (
           <div className="message assistant">
             <div className="bubble assistant">
