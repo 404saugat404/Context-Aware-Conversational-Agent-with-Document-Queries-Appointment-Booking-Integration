@@ -23,7 +23,7 @@ from typing import Optional
 import httpx
 from google import genai
 
-from backend.config import GEMINI_API_KEY, GEMINI_MODEL_NAME, OLLAMA_BASE_URL
+from backend.config import GEMINI_API_KEY, GEMINI_MODEL_NAME, LLM_TEMPERATURE, OLLAMA_BASE_URL
 from backend.logger import get_logger
 
 logger = get_logger(__name__)
@@ -109,15 +109,16 @@ def _get_gemini_client() -> genai.Client:
     return _gemini_client
 
 
-def _call_gemini(prompt: str, system_instruction: str, model: str) -> str:
+def _call_gemini(prompt: str, system_instruction: str, model: str, temperature: float = LLM_TEMPERATURE) -> str:
     """Call Gemini API and return response text."""
-    logger.info("Calling Gemini model: %s", model)
+    logger.info("Calling Gemini model: %s (temperature=%.2f)", model, temperature)
     client = _get_gemini_client()
     response = client.models.generate_content(
         model=model,
         contents=prompt,
         config=genai.types.GenerateContentConfig(
             system_instruction=system_instruction,
+            temperature=temperature,
         ),
     )
     return response.text
@@ -138,15 +139,18 @@ def _get_ollama_local_models() -> list[str]:
         return []
 
 
-def _call_ollama(prompt: str, system_instruction: str, model: str) -> str:
+def _call_ollama(prompt: str, system_instruction: str, model: str, temperature: float = LLM_TEMPERATURE) -> str:
     """Call Ollama's /api/generate endpoint and return the response text."""
-    logger.info("Calling Ollama model: %s at %s", model, OLLAMA_BASE_URL)
+    logger.info("Calling Ollama model: %s at %s (temperature=%.2f)", model, OLLAMA_BASE_URL, temperature)
 
     payload = {
         "model": model,
         "system": system_instruction,
         "prompt": prompt,
         "stream": False,
+        "options": {
+            "temperature": temperature,
+        },
     }
 
     try:
@@ -375,6 +379,7 @@ def generate_response(
     system_instruction: str,
     model: Optional[str] = None,
     provider: Optional[str] = None,
+    temperature: float = LLM_TEMPERATURE,
 ) -> str:
     """
     Generate a response from the configured LLM.
@@ -386,6 +391,8 @@ def generate_response(
                Defaults to GEMINI_MODEL_NAME from config.
         provider: Force a specific provider ("gemini" or "ollama").
                   If None, auto-detected from the model name.
+        temperature: Sampling temperature (0.0 = deterministic, 1.0+ = creative).
+                     Defaults to LLM_TEMPERATURE from config.
 
     Returns:
         The LLM's response text.
@@ -397,9 +404,9 @@ def generate_response(
     else:
         resolved_provider = detect_provider(resolved_model)
 
-    logger.info("LLM request — provider=%s, model=%s", resolved_provider.value, resolved_model)
+    logger.info("LLM request — provider=%s, model=%s, temperature=%.2f", resolved_provider.value, resolved_model, temperature)
 
     if resolved_provider == LLMProvider.GEMINI:
-        return _call_gemini(prompt, system_instruction, resolved_model)
+        return _call_gemini(prompt, system_instruction, resolved_model, temperature)
     else:
-        return _call_ollama(prompt, system_instruction, resolved_model)
+        return _call_ollama(prompt, system_instruction, resolved_model, temperature)

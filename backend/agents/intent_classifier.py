@@ -44,6 +44,7 @@ _GREETING_PATTERNS = [
 
 _RAG_PATTERNS = [
     r"\b(what|how|why|when|where|who|explain|describe|tell me|can you)\b",
+    r"\b(know\s+more|learn\s+more|more\s+about|details?\s+about|information\s+(about|on))\b",
     r"\?$",
 ]
 
@@ -126,6 +127,17 @@ def _regex_classify(message: str) -> tuple[str | None, str]:
 
     # Ambiguous: appointment and rag patterns both match
     if appointment_hits >= 1 and rag_hits >= 1:
+        # Check if the user is asking *about* a topic (RAG) vs requesting
+        # to *perform* a booking action.
+        # Phrases like "know more about", "tell me about", "what is",
+        # "explain", "learn about" indicate information-seeking, not booking.
+        info_seeking_pattern = re.compile(
+            r"\b(know\s+more|tell\s+me|learn|explain|describe|what\s+is|what\s+are"
+            r"|how\s+does|how\s+do|details?\s+about|information\s+(about|on))\b",
+            re.IGNORECASE,
+        )
+        if info_seeking_pattern.search(message):
+            return "rag", "high"
         # e.g. "Can you book an appointment?" — appointment takes priority
         return "appointment", "high"
 
