@@ -68,10 +68,23 @@ function ChatPage() {
 
     setInput('')
     setMessages((prev) => [...prev, { role: 'user', content: text }])
+
+    // Small delay before showing typing indicator — feels more natural
+    await new Promise((r) => setTimeout(r, 400 + Math.random() * 300))
     setLoading(true)
 
     try {
+      // Track when the request started so we can ensure a minimum thinking delay
+      const requestStart = Date.now()
       const data = await sendChat(text, sessionId, selectedModel)
+
+      // Ensure the typing indicator shows for at least 600-1200ms
+      const elapsed = Date.now() - requestStart
+      const minDelay = 600 + Math.random() * 600 // 600-1200ms
+      if (elapsed < minDelay) {
+        await new Promise((r) => setTimeout(r, minDelay - elapsed))
+      }
+
       setSessionId(data.session_id)
       setMessages((prev) => {
         const newMsg = {
