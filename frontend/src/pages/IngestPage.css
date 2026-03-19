@@ -1,0 +1,198 @@
+.ingest-page {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 2.5rem 1.5rem;
+  overflow-y: auto;
+}
+
+.ingest-container {
+  width: 100%;
+  max-width: 540px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 2rem;
+}
+
+.ingest-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 1.75rem;
+  color: var(--primary);
+}
+
+.ingest-header h2 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.15rem;
+}
+
+.ingest-header p {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.ingest-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+/* Drop zone */
+.drop-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  background: var(--bg);
+}
+
+.drop-zone:hover,
+.drop-zone.drag-active {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+.drop-zone.has-file {
+  border-style: solid;
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+.drop-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.drop-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--primary);
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.file-name {
+  word-break: break-all;
+}
+
+.file-size {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+/* Reuse form styles from AppointmentPage */
+.ingest-form .form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.ingest-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.ingest-form .form-group label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ingest-form .form-group input {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  transition: border-color 0.15s;
+}
+
+.ingest-form .form-group input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.ingest-form .form-hint {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.btn-upload {
+  margin-top: 0.5rem;
+  padding: 0.7rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary);
+  color: white;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+
+.btn-upload:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.btn-upload:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Result cards — same as AppointmentPage */
+.ingest-page .result-card {
+  margin-top: 1.25rem;
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.ingest-page .result-card.success {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #c8e6c9;
+}
+
+.ingest-page .result-card.fail {
+  background: #fdecea;
+  color: #c62828;
+  border: 1px solid #f5c6cb;
+}
+
+.ingest-page .result-message {
+  font-weight: 500;
+}
+
+.ingest-page .result-detail {
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 520px) {
+  .ingest-form .form-row {
+    grid-template-columns: 1fr;
+  }
+}

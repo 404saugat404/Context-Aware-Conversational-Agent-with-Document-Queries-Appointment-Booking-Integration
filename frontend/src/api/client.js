@@ -41,3 +41,20 @@ export async function deleteSession(sessionId) {
   if (!res.ok) throw new Error('Failed to clear session')
   return res.json()
 }
+
+export async function ingestFile(file, chunkSize = 512, chunkOverlap = 64) {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('chunk_size', chunkSize)
+  formData.append('chunk_overlap', chunkOverlap)
+
+  const res = await fetch(`${BASE}/ingest`, {
+    method: 'POST',
+    body: formData,
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'File upload failed')
+  }
+  return res.json()
+}
