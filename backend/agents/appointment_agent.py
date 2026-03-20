@@ -1,7 +1,7 @@
 """
 Appointment booking agent node for LangGraph.
 
-Drives a multi-step conversational form collecting: name, phone, email, date.
+Drives a multi-step conversational form collecting: name, phone, email, date, and optional reason.
 
 Hybrid extraction approach:
   1. Regex-based extraction (fast, deterministic)
@@ -64,6 +64,10 @@ _CONFIRM_PATTERN = re.compile(
 )
 _DENY_PATTERN = re.compile(
     r"\b(no|nah|cancel|nope|don't|stop|nevermind|never\s*mind)\b",
+    re.IGNORECASE,
+)
+_SKIP_PATTERN = re.compile(
+    r"\b(skip|no\s*reason|none|n/?a|no\s*thanks|nothing|pass)\b",
     re.IGNORECASE,
 )
 
@@ -359,14 +363,17 @@ def _prompt_for_field(field: str, data: dict) -> str:
 
 def _format_confirmation(data: dict) -> str:
     """Format the confirmation message showing all collected data."""
-    return (
-        "Here's what I have:\n"
-        f"- Name: {data.get('name', '')}\n"
-        f"- Phone: {data.get('phone', '')}\n"
-        f"- Email: {data.get('email', '')}\n"
-        f"- Date: {data.get('preferred_date', '')}\n\n"
-        "Shall I confirm this booking? (yes/no)"
-    )
+    lines = [
+        "Here's what I have:",
+        f"- Name: {data.get('name', '')}",
+        f"- Phone: {data.get('phone', '')}",
+        f"- Email: {data.get('email', '')}",
+        f"- Date: {data.get('preferred_date', '')}",
+    ]
+    if data.get("reason"):
+        lines.append(f"- Reason: {data['reason']}")
+    lines.append("\nShall I confirm this booking? (yes/no)")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -415,9 +422,12 @@ def handle_appointment(state: AgentState) -> AgentState:
 
         next_missing = _find_next_missing_field(data)
         if next_missing is None:
-            # All fields extracted from a single message — go to confirm
-            state["appointment_step"] = "confirm"
-            state["response"] = _format_confirmation(data)
+            # All required fields extracted — ask for optional reason
+            state["appointment_step"] = "reason"
+            state["response"] = (
+                "Great, I have all the details! One more thing — "
+                "what is the reason for your appointment? (You can type 'skip' to skip this)"
+            )
         else:
             state["appointment_step"] = next_missing
             if data:
@@ -436,6 +446,20 @@ def handle_appointment(state: AgentState) -> AgentState:
         state["appointment_data"] = data
         return state
 
+    # --- Reason step (optional) -------------------------------------------
+    if step == "reason":
+        if _SKIP_PATTERN.search(message):
+            logger.info("User skipped reason for appointment")
+        else:
+            reason = message.strip()[:500]  # Cap at 500 chars
+            if reason:
+                data["reason"] = reason
+                logger.info("Captured appointment reason: %.60s", reason)
+        state["appointment_data"] = data
+        state["appointment_step"] = "confirm"
+        state["response"] = _format_confirmation(data)
+        return state
+
     # --- Confirmation step ------------------------------------------------
     if step == "confirm":
         is_confirm = bool(_CONFIRM_PATTERN.search(message))
@@ -448,6 +472,7 @@ def handle_appointment(state: AgentState) -> AgentState:
                     phone=data["phone"],
                     email=data["email"],
                     preferred_date=data["preferred_date"],
+                    reason=data.get("reason"),
                 )
                 result = book_appointment(appointment)
                 state["response"] = (
@@ -515,9 +540,11 @@ def handle_appointment(state: AgentState) -> AgentState:
     next_missing = _find_next_missing_field(data)
 
     if next_missing is None:
-        # All fields collected — show confirmation
-        state["appointment_step"] = "confirm"
-        state["response"] = _format_confirmation(data)
+        # All required fields collected — ask for optional reason
+        state["appointment_step"] = "reason"
+        state["response"] = (
+            "What is the reason for your appointment? (You can type 'skip' to skip this)"
+        )
     else:
         state["appointment_step"] = next_missing
         state["response"] = _prompt_for_field(next_missing, data)

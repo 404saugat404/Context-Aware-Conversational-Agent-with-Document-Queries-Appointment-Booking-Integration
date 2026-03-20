@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
+        .container { max-width: 600px; margin: 30px auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .header { background: #4f46e5; color: #fff; padding: 24px; text-align: center; }
+        .header h1 { margin: 0; font-size: 22px; }
+        .body { padding: 24px; color: #333; }
+        .detail-table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+        .detail-table td { padding: 10px 12px; border-bottom: 1px solid #eee; }
+        .detail-table td:first-child { font-weight: bold; color: #555; width: 40%; }
+        .footer { padding: 16px 24px; text-align: center; font-size: 13px; color: #999; background: #fafafa; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Appointment Confirmed</h1>
+        </div>
+        <div class="body">
+            <p>Hi <strong>{{ name }}</strong>,</p>
+            <p>Your appointment has been booked successfully. Here are the details:</p>
+            <table class="detail-table">
+                <tr><td>Appointment ID</td><td>{{ appointment_id }}</td></tr>
+                <tr><td>Name</td><td>{{ name }}</td></tr>
+                <tr><td>Email</td><td>{{ email }}</td></tr>
+                <tr><td>Phone</td><td>{{ phone }}</td></tr>
+                <tr><td>Date</td><td>{{ preferred_date }}</td></tr>
+                {% if reason %}
+                <tr><td>Reason</td><td>{{ reason }}</td></tr>
+                {% endif %}
+            </table>
+            <p>Please keep your Appointment ID for future reference.</p>
+        </div>
+        <div class="footer">
+            This is an automated confirmation email. Please do not reply.
+        </div>
+    </div>
+</body>
+</html>

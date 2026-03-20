@@ -44,6 +44,22 @@ RAG_MAX_CONTEXT_TOKENS: int = int(os.getenv("RAG_MAX_CONTEXT_TOKENS", "2048"))
 DATA_DIR: str = os.getenv("DATA_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "data"))
 
 # ---------------------------------------------------------------------------
+# Email
+# ---------------------------------------------------------------------------
+MAIL_USERNAME: str = os.getenv("MAIL_USERNAME", "")
+MAIL_PASSWORD: str = os.getenv("MAIL_PASSWORD", "")
+MAIL_FROM: str = os.getenv("MAIL_FROM", "")
+MAIL_PORT: int = int(os.getenv("MAIL_PORT", "587"))
+MAIL_SERVER: str = os.getenv("MAIL_SERVER", "smtp.gmail.com")
+MAIL_STARTTLS: bool = os.getenv("MAIL_STARTTLS", "true").lower() == "true"
+MAIL_SSL_TLS: bool = os.getenv("MAIL_SSL_TLS", "false").lower() == "true"
+USE_CREDENTIALS: bool = os.getenv("USE_CREDENTIALS", "true").lower() == "true"
+TEMPLATE_FOLDER: str = os.getenv(
+    "TEMPLATE_FOLDER",
+    os.path.join(os.path.dirname(__file__), "templates"),
+)
+
+# ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
