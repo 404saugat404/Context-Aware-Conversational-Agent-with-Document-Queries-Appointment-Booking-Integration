@@ -3,11 +3,14 @@ Embedding and reranker model singletons.
 
 Models are lazily loaded on first access so that import-time cost is zero.
 Subsequent calls return the cached instance.
+
+Query embeddings are cached with an LRU cache to avoid redundant computation.
 """
 
 from __future__ import annotations
 
-from typing import List, Optional
+from functools import lru_cache
+from typing import List, Optional, Tuple
 
 from sentence_transformers import SentenceTransformer, CrossEncoder
 
@@ -40,9 +43,20 @@ def get_reranker_model() -> CrossEncoder:
     return _reranker_model
 
 
+@lru_cache(maxsize=128)
+def _cached_embed(text: str) -> Tuple[float, ...]:
+    """Return a cached embedding for a single text string."""
+    model = get_embedding_model()
+    vec = model.encode([text], show_progress_bar=False, normalize_embeddings=True)[0]
+    return tuple(vec.tolist())
+
+
 def generate_embeddings(texts: List[str]) -> List[List[float]]:
     """
     Generate dense vector embeddings for a list of texts.
+
+    Single-text calls (the common query path) hit an LRU cache so repeated
+    or similar questions skip model inference entirely.
 
     Args:
         texts: Plain-text strings to embed.
@@ -54,7 +68,13 @@ def generate_embeddings(texts: List[str]) -> List[List[float]]:
         logger.warning("generate_embeddings called with empty text list")
         return []
 
+    # Fast path: single text (query embedding) → use LRU cache
+    if len(texts) == 1:
+        logger.debug("Generating embedding for query (cached path)")
+        return [list(_cached_embed(texts[0]))]
+
+    # Batch path: multiple texts (e.g. document ingestion) → no cache
     model = get_embedding_model()
-    logger.debug("Generating embeddings for %d texts", len(texts))
+    logger.debug("Generating embeddings for %d texts (batch path)", len(texts))
     embeddings = model.encode(texts, show_progress_bar=False, normalize_embeddings=True)
     return embeddings.tolist()

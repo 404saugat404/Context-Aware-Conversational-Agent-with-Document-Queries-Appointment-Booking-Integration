@@ -14,9 +14,10 @@ from typing import Optional
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
-class GeminiModel(str, Enum):
-    """Supported Gemini model variants."""
+class LLMModel(str, Enum):
+    """Supported Gemini model variants. Ollama models are dynamic (detected at runtime)."""
 
+    # Gemini (cloud)
     GEMINI_2_5_FLASH = "gemini-2.5-flash"
     GEMINI_2_5_PRO = "gemini-2.5-pro"
     GEMINI_2_0_FLASH = "gemini-2.0-flash"
@@ -24,8 +25,12 @@ class GeminiModel(str, Enum):
 
     @classmethod
     def list_models(cls) -> list[str]:
-        """Return all supported model IDs."""
+        """Return all Gemini model IDs."""
         return [m.value for m in cls]
+
+
+# Keep backward-compatible alias
+GeminiModel = LLMModel
 
 
 class AppointmentRequest(BaseModel):
@@ -39,8 +44,8 @@ class AppointmentRequest(BaseModel):
     )
     phone: str = Field(
         ...,
-        pattern=r"^\+?\d{10,15}$",
-        description="Phone number (10-15 digits, optional leading +)",
+        pattern=r"^(?:\+977)?(98|97)\d{8}$",
+        description="Nepali phone number (starts with 98 or 97, 10 digits, optional +977 country code)",
     )
     email: EmailStr = Field(
         ...,
@@ -101,12 +106,11 @@ class ChatRequest(BaseModel):
         default=None,
         description="Session identifier for conversation continuity",
     )
-    model: Optional[GeminiModel] = Field(
+    model: Optional[str] = Field(
         default=None,
         description=(
-            "Gemini model to use for this request. "
-            "Overrides the server default (GEMINI_MODEL_NAME env var). "
-            f"Options: {GeminiModel.list_models()}"
+            "LLM model to use (e.g. 'mistral', 'gemini-2.0-flash'). "
+            "Leave empty to use the server default. Provider is auto-detected from model name."
         ),
     )
 
@@ -120,11 +124,19 @@ class ChatResponse(BaseModel):
         default=None,
         description="Detected intent (rag, appointment, greeting, etc.)",
     )
+    intent_confidence: Optional[str] = Field(
+        default=None,
+        description="Classification confidence level (high, medium, low)",
+    )
+    intent_source: Optional[str] = Field(
+        default=None,
+        description="Which classifier determined the intent (regex, llm, context, fallback)",
+    )
     sources: Optional[list[str]] = Field(
         default=None,
         description="Source documents used for RAG responses",
     )
     model_used: Optional[str] = Field(
         default=None,
-        description="The Gemini model that generated the response",
+        description="The LLM model that generated the response",
     )

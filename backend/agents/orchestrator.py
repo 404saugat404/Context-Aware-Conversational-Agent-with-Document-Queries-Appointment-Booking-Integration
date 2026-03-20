@@ -20,6 +20,7 @@ from backend.agents.rag_agent import handle_rag_query
 from backend.agents.state import AgentState
 from backend.config import GEMINI_MODEL_NAME
 from backend.logger import get_logger
+from backend.services.guardrails_service import check_message
 from backend.services.persistence_service import (
     load_all_conversations,
     save_conversation,
@@ -44,6 +45,27 @@ def _handle_appointment_cancel(state: AgentState) -> AgentState:
 # ---------------------------------------------------------------------------
 _sessions: Dict[str, List[Dict[str, str]]] = load_all_conversations()
 _session_appointment_state: Dict[str, dict] = {}
+
+
+def clear_session(session_id: str) -> bool:
+    """
+    Clear all state for a session (chat history + appointment state).
+
+    Returns True if the session existed, False if not found.
+    """
+    found = session_id in _sessions or session_id in _session_appointment_state
+    _sessions.pop(session_id, None)
+    _session_appointment_state.pop(session_id, None)
+
+    # Remove persisted conversation file
+    from backend.services.persistence_service import delete_conversation
+    delete_conversation(session_id)
+
+    if found:
+        logger.info("Session cleared: %s", session_id)
+    else:
+        logger.info("Session not found for clearing: %s", session_id)
+    return found
 
 
 def _route_by_intent(state: AgentState) -> str:
@@ -126,6 +148,8 @@ def process_message(
         "session_id": session_id,
         "chat_history": chat_history,
         "intent": "",
+        "intent_confidence": "",
+        "intent_source": "",
         "llm_model": resolved_model,
         "rag_context": "",
         "rag_sources": [],
@@ -141,11 +165,40 @@ def process_message(
         user_message,
     )
 
+    # --- Guardrails (skip when mid-appointment to avoid blocking field inputs) ---
+    active_appointment = appt_state.get("step", "") not in ("", "complete")
+    if not active_appointment:
+        guardrail_result = check_message(user_message)
+        if guardrail_result.is_blocked:
+            logger.info(
+                "Guardrail blocked message (reason=%s, session=%s): %.60s",
+                guardrail_result.reason,
+                session_id,
+                user_message,
+            )
+            # Still save to chat history so the user sees it in context
+            chat_history.append({"role": "user", "content": user_message})
+            chat_history.append({"role": "assistant", "content": guardrail_result.suggested_response})
+            save_conversation(session_id, chat_history)
+            return {
+                "reply": guardrail_result.suggested_response,
+                "session_id": session_id,
+                "intent": f"blocked:{guardrail_result.reason}",
+                "intent_confidence": "high",
+                "intent_source": "guardrail",
+                "sources": [],
+                "model_used": resolved_model,
+            }
+
     final_state = _compiled_graph.invoke(initial_state)
 
-    # Persist conversational context
+    # Persist conversational context (include intent for follow-up detection)
     chat_history.append({"role": "user", "content": user_message})
-    chat_history.append({"role": "assistant", "content": final_state.get("response", "")})
+    chat_history.append({
+        "role": "assistant",
+        "content": final_state.get("response", ""),
+        "intent": final_state.get("intent", ""),
+    })
 
     # Keep history bounded (last 20 messages)
     if len(chat_history) > 20:
@@ -165,6 +218,8 @@ def process_message(
         "reply": final_state.get("response", "I'm not sure how to help with that."),
         "session_id": session_id,
         "intent": final_state.get("intent", "unknown"),
+        "intent_confidence": final_state.get("intent_confidence", ""),
+        "intent_source": final_state.get("intent_source", ""),
         "sources": final_state.get("rag_sources", []),
         "model_used": resolved_model,
     }

@@ -95,10 +95,13 @@ def chunk_document(
     # Filter out whitespace-only chunks
     raw_chunks = [c.strip() for c in raw_chunks if c.strip()]
 
+    # Prefer original_filename over temp file path for the source field
+    display_source = (extra_metadata or {}).get("original_filename", source)
+
     doc_chunks: list[DocumentChunk] = []
     for idx, chunk_text in enumerate(raw_chunks):
         metadata = {
-            "source": source,
+            "source": display_source,
             "section": section,
             "chunk_index": idx,
             **(extra_metadata or {}),
@@ -106,7 +109,7 @@ def chunk_document(
         doc_chunks.append(
             DocumentChunk(
                 text=chunk_text,
-                source=source,
+                source=display_source,
                 section=section,
                 metadata=metadata,
             )

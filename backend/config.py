@@ -23,6 +23,7 @@ GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL_NAME: str = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash")
 OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_API_KEY: str = os.getenv("OLLAMA_API_KEY", "")
+LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.7"))
 
 # ---------------------------------------------------------------------------
 # Embedding & reranker model identifiers

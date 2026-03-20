@@ -109,6 +109,18 @@ def load_conversation(session_id: str) -> Optional[List[Dict[str, str]]]:
     return all_conversations.get(session_id)
 
 
+def delete_conversation(session_id: str) -> bool:
+    """Delete a single session's chat history from disk. Returns True if it existed."""
+    with _conversations_lock:
+        all_conversations = _read_json_file(_CONVERSATIONS_FILE)
+        if session_id not in all_conversations:
+            return False
+        del all_conversations[session_id]
+        _write_json_file(_CONVERSATIONS_FILE, all_conversations)
+    logger.info("Deleted conversation for session %s", session_id)
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Appointment persistence
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 # Context-Aware Conversational Agent
 
-A production-ready conversational chatbot that seamlessly handles **document-based Q&A (RAG)** and **appointment booking** through a unified chat interface. Built with FastAPI, LangGraph, Qdrant, and Gemini.
+A production-ready conversational chatbot that seamlessly handles **document-based Q&A (RAG)** and **appointment booking** through a unified chat interface. Built with FastAPI, LangGraph, Qdrant, and a **dual LLM backend** (Google Gemini + Ollama for local models).
 
 ---
 
@@ -25,7 +25,7 @@ A production-ready conversational chatbot that seamlessly handles **document-bas
                              v                 |                v
               +-----------------------------+  |    +-----------------------+
               |      Intent Classifier      |  |    | chunk -> embed ->     |
-              | (regex pattern matching)    |  |    | upsert into Qdrant    |
+              | (regex + LLM + context)    |  |    | upsert into Qdrant    |
               +----+------+------+----+----+  |    +-----------------------+
                    |      |      |    |       |
           +--------+  +---+  +---+  +-+-------+--+
@@ -57,8 +57,9 @@ A production-ready conversational chatbot that seamlessly handles **document-bas
          |                    |          |        |
          v                    |          |        |
     +----+----+               |          |        |
-    | Gemini  |               |          |        |
-    | LLM API |               |          |        |
+    | LLM     |               |          |        |
+    | Gemini/ |               |          |        |
+    | Ollama  |               |          |        |
     +---------+               |          |        |
                               v          v        v
                          +----+----------+--------+----+
@@ -80,7 +81,8 @@ A production-ready conversational chatbot that seamlessly handles **document-bas
                               v
                     +---------+---------+
                     | classify_intent   |
-                    | (pattern-based)   |
+                    | (regex + context  |
+                    |  + LLM fallback)  |
                     +-+----+----+----+--+
                       |    |    |    |
             rag       |    |    |    |  appointment_cancel
@@ -105,16 +107,25 @@ A production-ready conversational chatbot that seamlessly handles **document-bas
 
 ### Intent Classification Logic
 
+The classifier uses a **three-pass hybrid approach**:
+
+1. **Regex (fast, deterministic)** — Pattern matching for clear intents (high confidence)
+2. **Conversation context** — If regex is uncertain and the previous turn was RAG, follow-up messages stay as RAG (avoids misclassifying short follow-ups like "how did it originate?")
+3. **LLM fallback** — Only called when regex is uncertain and no context signal exists
+
 | User Message Pattern | Detected Intent | Routed To |
 |---|---|---|
 | "book", "schedule", "appointment", "reserve" | `appointment` | Appointment Agent |
-| "what", "how", "why", "explain", "?" | `rag` | RAG Agent |
+| "what", "how did", "why is", "explain", "?" | `rag` | RAG Agent |
 | "hi", "hello", "hey", "good morning" | `greeting` | Greeting Handler |
 | "cancel", "stop", "quit" (mid-appointment) | `appointment_cancel` | Cancel Handler |
 | "continue booking", "resume appointment" | `appointment` | Appointment Agent |
+| Follow-up to a RAG query (no appointment keywords) | `rag` | RAG Agent |
 | Anything else | `rag` (default) | RAG Agent |
 
-**Context-switching**: When a user is mid-appointment and asks a question (e.g., "What are your office hours?"), the classifier detects it's a question (not a field value) and routes to the RAG agent. The appointment state is **paused, not lost** -- the user can say "continue booking" to resume.
+**Context-switching**: When a user is mid-appointment and asks a question (e.g., "What are your office hours?"), the classifier detects it's a question (not a field value) and routes to the RAG agent. The appointment state is **paused, not lost** — the user can say "continue booking" to resume.
+
+**Follow-up detection**: Conversational follow-ups (e.g., "how did it originate?" after asking about a topic) are correctly routed to RAG by checking the previous turn's intent, preventing small LLMs from misclassifying them.
 
 ---
 
@@ -156,7 +167,7 @@ User Query
     |
     v
 +---+-------------------+
-| LLM Generation         |  Gemini 1.5 Flash
+| LLM Generation         |  Gemini or Ollama (auto-detected)
 | (rag_agent.py)         |  System prompt + context + chat history
 +------------------------+
 ```
@@ -177,9 +188,9 @@ User: "I want to book an appointment"
                 |
                 v
         +-------+--------+
-        | Step 2: PHONE   |  Validation: 10-15 digits, optional leading +
-        | "What is your   |  Auto-cleans spaces and dashes
-        |  phone number?" |  Error: "That phone number doesn't look right"
+        | Step 2: PHONE   |  Validation: Nepali mobile (starts with 98/97,
+        | "What is your   |  10 digits, optional +977 prefix)
+        |  phone number?" |  Auto-cleans spaces and dashes
         +-------+--------+
                 |
                 v
@@ -241,21 +252,35 @@ backend/
 |
 |-- services/
 |   |-- rag_service.py           # Full RAG orchestration: retrieve -> rerank -> build
+|   |-- llm_provider.py          # Unified LLM abstraction (Gemini + Ollama auto-routing)
 |   |-- appointment_service.py   # Booking logic, date parsing, slot management
+|   |-- guardrails_service.py    # Input guardrails (profanity, injection detection)
+|   |-- persistence_service.py   # JSON file-based session & appointment persistence
 |   +-- tools_service.py         # Date parser, phone/email validators, query rewriter
 |
 +-- agents/
     |-- state.py                 # Shared AgentState TypedDict for LangGraph
-    |-- intent_classifier.py     # Pattern-based intent detection with context-switching
-    |-- rag_agent.py             # RAG node: context retrieval + Gemini LLM call
+    |-- intent_classifier.py     # Hybrid intent detection (regex + context + LLM fallback)
+    |-- rag_agent.py             # RAG node: context retrieval + LLM call
     |-- appointment_agent.py     # Multi-step conversational booking form
     |-- greeting_handler.py      # Greeting responses
     +-- orchestrator.py          # LangGraph StateGraph: classify -> route -> respond
 
-docker/
-+-- docker-compose.yml           # Qdrant + Ollama containers
+frontend/
+|-- src/
+|   |-- api/client.js            # API client for backend communication
+|   |-- pages/
+|   |   |-- ChatPage.jsx         # Main chat interface with typewriter effect
+|   |   |-- AppointmentPage.jsx  # Appointment management page
+|   |   +-- IngestPage.jsx       # Document upload page
+|   |-- components/
+|   |   +-- Sidebar.jsx          # Navigation sidebar
+|   +-- App.jsx                  # Root app with routing
+|-- Dockerfile                   # Multi-stage build (Node -> Nginx)
++-- nginx.conf                   # Reverse proxy config for API
 
-.env.example                     # Environment variable template
+docker-compose.yml               # Full stack: backend, frontend, Qdrant, Ollama
+.env                             # Environment variable configuration
 requirements.txt                 # Python dependencies
 ```
 
@@ -296,14 +321,17 @@ main.py ──> api/chat.py ──> agents/orchestrator.py ──> intent_classi
 | Component | Technology |
 |---|---|
 | Backend Framework | FastAPI |
+| Frontend | React + Vite (served via Nginx) |
 | Agent Orchestration | LangGraph (StateGraph with conditional routing) |
 | Vector Database | Qdrant (Docker container) |
 | Embeddings | SentenceTransformers (`BAAI/bge-small-en-v1.5`, 384-dim) |
 | Reranker | CrossEncoder (`BAAI/bge-reranker-base`) |
-| LLM | Google Gemini 1.5 Flash API |
+| LLM (Cloud) | Google Gemini 2.0 Flash API |
+| LLM (Local) | Ollama (llama3.2, mistral, etc.) — auto-detected by model name |
 | Input Validation | Pydantic v2 with field validators |
-| Date Parsing | dateparser (natural language to YYYY-MM-DD) |
-| Session Storage | In-memory dict (swap for Redis in production) |
+| Date Parsing | dateparser + parsedatetime (dual parser for natural language to YYYY-MM-DD) |
+| Session Storage | In-memory dict + JSON file persistence (swap for Redis in production) |
+| Containerization | Docker Compose (backend, frontend, Qdrant, Ollama) |
 | Configuration | `.env` with `python-dotenv` |
 | Logging | Python `logging` module (centralized, configurable level) |
 
@@ -321,7 +349,8 @@ Main conversational endpoint. Routes through the LangGraph orchestrator.
 ```json
 {
   "message": "What is the refund policy?",
-  "session_id": null
+  "session_id": null,
+  "model": "llama3.2:1b"
 }
 ```
 
@@ -331,7 +360,10 @@ Main conversational endpoint. Routes through the LangGraph orchestrator.
   "reply": "Based on our documents, the refund policy states...",
   "session_id": "a1b2c3d4e5f6",
   "intent": "rag",
-  "sources": ["policy.txt"]
+  "intent_confidence": "high",
+  "intent_source": "regex",
+  "sources": ["policy.txt"],
+  "model_used": "llama3.2:1b"
 }
 ```
 
@@ -343,7 +375,7 @@ Direct appointment booking (bypasses conversational flow).
 ```json
 {
   "name": "John Doe",
-  "phone": "9876543210",
+  "phone": "9812345678",
   "email": "john@example.com",
   "preferred_date": "2026-03-25",
   "reason": "General consultation"
@@ -398,7 +430,7 @@ Health check.
 | Field | Type | Constraints |
 |---|---|---|
 | `name` | `str` | 2-100 chars, must contain letters |
-| `phone` | `str` | 10-15 digits, optional leading `+` |
+| `phone` | `str` | Nepali mobile: starts with 98/97, 10 digits, optional `+977` |
 | `email` | `EmailStr` | Valid email format |
 | `preferred_date` | `date` | Must be today or in the future |
 | `reason` | `str` (optional) | Max 500 chars |
@@ -409,6 +441,7 @@ Health check.
 |---|---|---|
 | `message` | `str` | 1-2000 chars |
 | `session_id` | `str` (optional) | Auto-generated if absent |
+| `model` | `str` (optional) | LLM model override (e.g., `"llama3.2:1b"`, `"gemini-2.0-flash"`) |
 
 ### AgentState (LangGraph)
 
@@ -431,44 +464,52 @@ Health check.
 
 ### Prerequisites
 
-- Python 3.10+
 - Docker & Docker Compose
-- A Google Gemini API key ([get one here](https://aistudio.google.com/apikey))
+- (Optional) A Google Gemini API key ([get one here](https://aistudio.google.com/apikey)) — not needed if using Ollama only
 
-### 1. Clone and configure
+### Option A: Docker Compose (Recommended)
+
+Runs the full stack (backend, frontend, Qdrant, Ollama) in containers.
 
 ```bash
 git clone <repo-url>
 cd Context-Aware-Conversational-Agent-with-Document-Queries-Appointment-Booking-Integration
+
+# Configure environment
 cp .env.example .env
-# Edit .env and add your GEMINI_API_KEY
+# Edit .env — set GEMINI_API_KEY or change GEMINI_MODEL_NAME to an Ollama model
+
+# Start everything
+docker compose up --build -d
+
+# Pull an Ollama model (if using local LLM)
+docker exec -it ollama ollama pull llama3.2:1b
 ```
 
-### 2. Start Qdrant
+- Frontend: `http://localhost:80`
+- Backend API docs: `http://localhost:8000/docs`
+- Qdrant dashboard: `http://localhost:6333/dashboard`
+
+### Option B: Local Development
 
 ```bash
-cd docker
-docker compose up -d
-cd ..
-```
+# Start Qdrant and Ollama via Docker
+docker compose up -d qdrant ollama
 
-Verify at `http://localhost:6333/dashboard`.
-
-### 3. Install dependencies
-
-```bash
+# Install Python dependencies
 pip install -r requirements.txt
+
+# Install frontend dependencies
+cd frontend && npm install && cd ..
+
+# Run backend
+uvicorn backend.main:app --reload
+
+# Run frontend (separate terminal)
+cd frontend && npm run dev
 ```
 
 The embedding and reranker models (~100MB) are downloaded automatically on first use.
-
-### 4. Run the server
-
-```bash
-uvicorn backend.main:app --reload
-```
-
-API docs available at `http://localhost:8000/docs`.
 
 ---
 
@@ -531,13 +572,18 @@ curl -s -X POST http://localhost:8000/api/v1/chat \
 | Decision | Rationale |
 |---|---|
 | **Layered architecture** (API -> Service -> Component) | Business logic is never in endpoints; each layer is independently testable |
+| **Dual LLM backend** (Gemini + Ollama) | Cloud LLM for production quality, local Ollama for offline/free usage; provider auto-detected from model name |
 | **Lazy-loaded model singletons** | Zero import-time cost; models load only when first used |
-| **Regex-based intent classifier** | Deterministic, fast, no LLM cost; sufficient for well-defined intents |
+| **Three-pass intent classifier** (regex -> context -> LLM) | Regex is fast and free; conversation context catches follow-ups; LLM fallback handles edge cases |
+| **Date hint detection before parsing** | Prevents dateparser from aggressively interpreting names/random text as dates |
 | **Cross-encoder reranking** | Dramatically improves retrieval precision over embedding-only search |
 | **Token-budgeted context** | Prevents exceeding LLM context limits regardless of chunk count |
 | **Conversational appointment form** | Guides users step-by-step with clear validation feedback at each step |
+| **Nepal-specific phone validation** | Enforces 98/97 prefix with 10-digit format matching real Nepali mobile numbers |
 | **Context-switching with pause/resume** | Users can ask questions mid-booking without losing their progress |
-| **In-memory session store** | Simple for development; designed to be swapped for Redis with no code changes |
+| **Typewriter response animation** | Character-by-character reveal with blinking cursor creates a natural chat feel |
+| **Minimum thinking delay** | Typing indicator shows for at least 600ms even for instant responses, avoiding jarring UX |
+| **JSON file persistence** | Session history and appointments survive restarts without a database dependency |
 
 ---
 
@@ -545,12 +591,40 @@ curl -s -X POST http://localhost:8000/api/v1/chat \
 
 | Variable | Default | Description |
 |---|---|---|
-| `QDRANT_URL` | `http://localhost:6333` | Qdrant server URL |
+| `QDRANT_URL` | `http://localhost:6333` | Qdrant server URL (use `http://qdrant:6333` in Docker) |
 | `QDRANT_COLLECTION_NAME` | `documents` | Qdrant collection name |
-| `GEMINI_API_KEY` | (required) | Google Gemini API key |
+| `GEMINI_API_KEY` | (required for Gemini) | Google Gemini API key |
+| `GEMINI_MODEL_NAME` | `gemini-2.0-flash` | Default LLM model (set to an Ollama model name like `llama3.2:1b` to use local LLM) |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL (use `http://ollama:11434` in Docker) |
 | `EMBEDDING_MODEL_NAME` | `BAAI/bge-small-en-v1.5` | SentenceTransformer model ID |
 | `RERANKER_MODEL_NAME` | `BAAI/bge-reranker-base` | CrossEncoder reranker model ID |
 | `RAG_TOP_K` | `10` | Number of candidates from vector search |
 | `RAG_RERANK_TOP_N` | `3` | Number of chunks kept after reranking |
 | `RAG_MAX_CONTEXT_TOKENS` | `2048` | Max token budget for assembled context |
 | `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
+
+---
+
+## Frontend Features
+
+- **Model selector** — Switch between Gemini and Ollama models from the chat header
+- **Typewriter effect** — Assistant responses appear character-by-character with a blinking cursor
+- **Thinking delay** — A natural pause (400-700ms) before the typing indicator appears, plus a minimum 600-1200ms indicator duration for instant responses
+- **Fade-in animations** — Messages slide in smoothly when sent or received
+- **Typing indicator** — Animated bouncing dots while waiting for a response
+- **Session management** — "New Chat" button clears history and starts fresh
+- **Meta tags** — Each response shows the detected intent, model used, and source documents
+- **Document upload** — Ingest page for uploading files to the knowledge base
+- **Responsive layout** — Sidebar navigation with chat, appointments, and ingest pages
+
+---
+
+## Troubleshooting
+
+| Issue | Fix |
+|---|---|
+| **Ollama DNS failure in Docker** (`dial tcp: lookup registry.ollama.ai... connection refused`) | Add `{"dns": ["8.8.8.8", "1.1.1.1"]}` to `/etc/docker/daemon.json` and restart Docker |
+| **Port 11434 already in use** | Stop host Ollama: `sudo systemctl stop ollama` before running Docker |
+| **Gemini 429 quota exceeded** | Switch to Ollama: set `GEMINI_MODEL_NAME=llama3.2:1b` in `.env` |
+| **`npm ci` fails during frontend build** | Run `cd frontend && npm install` to generate `package-lock.json` first |
+| **Containerd blob not found** | Run `sudo docker system prune -a` to clear corrupt image cache |

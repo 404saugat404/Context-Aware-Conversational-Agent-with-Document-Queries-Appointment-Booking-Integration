@@ -41,6 +41,15 @@ app.include_router(chat_router, prefix="/api/v1", tags=["chat"])
 async def on_startup() -> None:
     logger.info("Application starting up")
 
+    # Pre-load ML models so the first request isn't penalised
+    from backend.rag.embedding_model import get_embedding_model, get_reranker_model
+
+    logger.info("Pre-loading embedding model...")
+    get_embedding_model()
+    logger.info("Pre-loading reranker model...")
+    get_reranker_model()
+    logger.info("All models loaded")
+
 
 @app.on_event("shutdown")
 async def on_shutdown() -> None:

@@ -64,7 +64,12 @@ def ingest_file(
     ensure_collection_exists()
 
     text = read_file(file_path)
-    source_name = os.path.basename(file_path)
+
+    # Prefer the original filename from extra_metadata over the temp file name
+    if extra_metadata and extra_metadata.get("original_filename"):
+        source_name = extra_metadata["original_filename"]
+    else:
+        source_name = os.path.basename(file_path)
 
     chunks: List[DocumentChunk] = chunk_document(
         text=text,

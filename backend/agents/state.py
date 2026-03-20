@@ -20,7 +20,9 @@ class AgentState(TypedDict, total=False):
         user_message: The current user input.
         session_id: Conversation session identifier.
         chat_history: Prior messages in this session.
-        intent: Detected intent (rag | appointment | greeting | unknown).
+        intent: Detected intent (rag | appointment | greeting | appointment_cancel).
+        intent_confidence: How confident the classifier is (high | medium | low).
+        intent_source: Which classifier determined the intent (regex | llm).
         rag_context: Assembled document context for LLM.
         rag_sources: Source document names used.
         appointment_data: Partially or fully collected appointment fields.
@@ -33,6 +35,8 @@ class AgentState(TypedDict, total=False):
     session_id: str
     chat_history: List[Dict[str, str]]
     intent: str
+    intent_confidence: str
+    intent_source: str
     llm_model: str
     rag_context: str
     rag_sources: List[str]

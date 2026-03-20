@@ -12,7 +12,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File, Query
 from pydantic import ValidationError
 
-from backend.agents.orchestrator import process_message
+from backend.agents.orchestrator import clear_session, process_message
 from backend.config import GEMINI_MODEL_NAME
 from backend.logger import get_logger
 from backend.models.appointment_schema import (
@@ -20,9 +20,9 @@ from backend.models.appointment_schema import (
     AppointmentResponse,
     ChatRequest,
     ChatResponse,
-    GeminiModel,
 )
 from backend.services.appointment_service import book_appointment
+from backend.services.llm_provider import list_available_models
 from backend.rag.ingest import ingest_file
 
 import tempfile
@@ -51,7 +51,7 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         result = process_message(
             user_message=request.message,
             session_id=request.session_id,
-            llm_model=request.model.value if request.model else None,
+            llm_model=request.model if request.model else None,
         )
     except Exception as exc:
         logger.exception("Unhandled error in chat endpoint")
@@ -61,6 +61,8 @@ async def chat_endpoint(request: ChatRequest) -> ChatResponse:
         reply=result["reply"],
         session_id=result["session_id"],
         intent=result.get("intent"),
+        intent_confidence=result.get("intent_confidence"),
+        intent_source=result.get("intent_source"),
         sources=result.get("sources"),
         model_used=result.get("model_used"),
     )
@@ -146,11 +148,22 @@ async def ingest_document_endpoint(
 
 @router.get("/models")
 async def list_models() -> dict:
-    """List available Gemini models and the current default."""
-    return {
-        "available_models": GeminiModel.list_models(),
-        "default_model": GEMINI_MODEL_NAME,
-    }
+    """List available models grouped by provider (Gemini + Ollama)."""
+    return list_available_models()
+
+
+@router.delete("/session/{session_id}")
+async def clear_session_endpoint(session_id: str) -> dict:
+    """
+    Clear all state for a session (chat history + appointment progress).
+
+    Use this to start a fresh conversation with the same or new session ID.
+    """
+    logger.info("DELETE /session/%s", session_id)
+    found = clear_session(session_id)
+    if not found:
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+    return {"message": f"Session '{session_id}' cleared successfully"}
 
 
 @router.get("/health")
