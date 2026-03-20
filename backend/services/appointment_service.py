@@ -7,6 +7,7 @@ Currently uses in-memory storage; swap in a database adapter for production.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import date
 from typing import Dict, List, Optional
@@ -17,6 +18,7 @@ from backend.models.appointment_schema import (
     AppointmentResponse,
     AppointmentSlot,
 )
+from backend.services.email_service import send_appointment_confirmation
 from backend.services.persistence_service import (
     load_all_appointments,
     save_appointment,
@@ -62,6 +64,21 @@ def book_appointment(appointment_data: AppointmentRequest) -> AppointmentRespons
     save_appointment(appointment_id, appointment_data.model_dump(mode="json"))
 
     logger.info("Appointment booked successfully: id=%s", appointment_id)
+
+    # Fire-and-forget confirmation email (non-blocking)
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(send_appointment_confirmation(
+            appointment_id=appointment_id,
+            name=appointment_data.name,
+            email=appointment_data.email,
+            phone=appointment_data.phone,
+            preferred_date=appointment_data.preferred_date.isoformat(),
+            reason=appointment_data.reason,
+        ))
+    except RuntimeError:
+        logger.warning("No running event loop — skipping confirmation email")
+
     return AppointmentResponse(
         success=True,
         message=f"Appointment booked successfully for {appointment_data.name} "
